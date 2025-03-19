@@ -21,16 +21,14 @@ template<typename T=int64> T gcd(T x, T y){
 template<typename T=int64> T lcm(T x, T y){
     return x/gcd(x, y)*y;
 }
-template<typename T1=int64,typename T2=int64> struct fraction{
-    T1 a;T2 b; // a/b
-    fraction(T1 _a=T1(0),T2 _b=T2(1)):a(_a),b(_b){
-        if(std::is_same_v<T1,T2> && std::is_same_v<T1,int64>){
-            if(b<0) a=-a,b=-b;
-            if(a==0) b=1;
-            else{
-                T1 g=gcd(a,T1(b));
-                a/=g,b/=T2(g);
-            }
+template<typename T=int64> struct fraction{
+    T a,b; // a/b
+    fraction(T _a=T(0),T _b=T(1)):a(_a),b(_b){
+        if(b<T(0)) a=-a,b=-b;
+        if(a==T(0)) b=1;
+        else{
+            T g=gcd(a,b);
+            a/=g,b/=g;
         }
     }
     fraction operator + (fraction x){
@@ -79,10 +77,8 @@ template<typename T1=int64,typename T2=int64> struct fraction{
         return (a!=x.a || b!=x.b);
     }
 };
-template<typename T1=int64,typename T2=int64> struct exponent{
-    T1 a;T2 p; // a^p
-    exponent(T1 _a=T1(0),T2 _p=T2(1)):a(_a),p(_p){}
-};
+
+bool LATEX_MODE=false;
 
 class Function{ public:
     virtual std::unique_ptr<Function> get_der() const = 0;
@@ -97,11 +93,11 @@ class Function{ public:
  *  - Parameter 3
  */
 
-template<typename T1=int64, typename T2=int64> class Constant: public Function{
-    fraction<T1,T2> val;
+template<typename T=int64> class Constant: public Function{
+    fraction<T> val;
 public:
-    Constant(T1 _a=T1(0), T2 _b=T2(1)):val(_a,_b){}
-    Constant(fraction<T1,T2> _val):val(_val){}
+    Constant(T _a=T(0), T _b=T(1)):val(_a,_b){}
+    Constant(fraction<T> _val):val(_val){}
     std::unique_ptr<Function> get_der() const override{
         return std::make_unique< Constant<> >(0);
     }
@@ -109,8 +105,9 @@ public:
         return std::make_unique< Constant<> >(val.a, val.b);
     }
     std::string to_str() const override{
-        if(val.a==T1(0)) return "0";
-        if(val.b==T2(1)) return std::to_string(val.a);
+        if(val.a==T(0)) return "0";
+        if(val.b==T(1)) return std::to_string(val.a);
+        if(LATEX_MODE) return "\\frac{"+std::to_string(val.a)+"}{"+std::to_string(val.b)+"}";
         return std::to_string(val.a)+"/"+std::to_string(val.b);
     }
     uint32 get_type() const override {return 1;}
@@ -167,7 +164,8 @@ public:
     std::string to_str() const override{
         if(g->to_str()=="0") return f->to_str();
         if(f->to_str()=="0") return g->to_str();
-        return "("+f->to_str()+"+"+g->to_str()+")";
+        if(g->to_str()[0]=='-') return f->to_str()+g->to_str();
+        return f->to_str()+"+"+g->to_str();
     }
     uint32 get_type() const override {return 4;}
 };
@@ -184,8 +182,8 @@ public:
     }
     std::string to_str() const override{
         if(g->to_str()=="0") return f->to_str();
-        if(f->to_str()=="0") return "(-"+g->to_str()+")";
-        return "("+f->to_str()+"-"+g->to_str()+")";
+        if(f->to_str()=="0") return "-"+g->to_str();
+        return f->to_str()+"-"+g->to_str();
     }
     uint32 get_type() const override {return 5;}
 };
@@ -207,7 +205,11 @@ public:
         if(g->to_str()=="0" || f->to_str()=="0") return "0";
         if(g->to_str()=="1") return f->to_str();
         if(f->to_str()=="1") return g->to_str();
-        return "("+f->to_str()+"*"+g->to_str()+")";
+        std::string f_str=f->to_str(),g_str=g->to_str();
+        if(f->get_type()==4 || f->get_type()==5) f_str="("+f_str+")";
+        if(g->get_type()==4 || g->get_type()==5) g_str="("+g_str+")";
+        if(LATEX_MODE) return f_str+"\\cdot "+g_str;
+        return f_str+"*"+g_str;
     }
     uint32 get_type() const override {return 6;}
 };
@@ -232,7 +234,11 @@ public:
     std::string to_str() const override{
         if(g->to_str()=="1") return f->to_str();
         if(f->to_str()=="0") return "0";
-        return "("+f->to_str()+"/"+g->to_str()+")";
+        std::string f_str=f->to_str(),g_str=g->to_str();
+        if(LATEX_MODE) return "\\frac{"+f_str+"}{"+g_str+"}";
+        if(f->get_type()==4 || f->get_type()==5) f_str="("+f_str+")";
+        if(g->get_type()==4 || g->get_type()==5) g_str="("+g_str+")";
+        return f_str+"/"+g_str;
     }
     uint32 get_type() const override {return 7;}
 };
@@ -274,6 +280,7 @@ public:
     std::string to_str() const override{
         if(f->to_str()=="0") return "1";
         if(f->to_str()=="1") return "e";
+        if(LATEX_MODE) return "e^{"+f->to_str()+"}";
         return "e^("+f->to_str()+")";
     }
     uint32 get_type() const override {return 9;}
@@ -281,8 +288,8 @@ public:
 class Pow: public Function{
     std::unique_ptr<Function> f,p;
 public:
-    template<typename T1=int64, typename T2=int64> Pow(std::unique_ptr<Function> _f, T1 _a, T2 _b):f(std::move(_f)),p(std::make_unique< Constant<T1,T2> >(_a,_b)){}
-    template<typename T1=int64, typename T2=int64> Pow(std::unique_ptr<Function> _f, fraction<T1,T2> _p):f(std::move(_f)),p(std::make_unique< Constant<T1,T2> >(_p)){}
+    template<typename T=int64> Pow(std::unique_ptr<Function> _f, T _a, T _b):f(std::move(_f)),p(std::make_unique< Constant<T> >(_a,_b)){}
+    template<typename T=int64> Pow(std::unique_ptr<Function> _f, fraction<T> _p):f(std::move(_f)),p(std::make_unique< Constant<T> >(_p)){}
     Pow(std::unique_ptr<Function> _f, std::unique_ptr<Function> _p):f(std::move(_f)),p(std::move(_p)){}
     std::unique_ptr<Function> get_der() const override{
         // (f^p)' = f^p * (p'*ln(f) + p*f'/f)
@@ -303,12 +310,19 @@ public:
     std::string to_str() const override{
         if(p->to_str()=="0") return "1";
         if(p->to_str()=="1") return f->to_str();
-        return "("+f->to_str()+"^"+p->to_str()+")";
+        std::string f_str=f->to_str(),p_str=p->to_str();
+        if(f->get_type()>3) f_str="("+f_str+")";
+        if(LATEX_MODE) return f->to_str()+"^{"+p->to_str()+"}";
+        return f->to_str()+"^("+p->to_str()+")";
     }
     uint32 get_type() const override {return 10;}
 };
 
 int main(int argc, char *argv[]){
+    for(int i=0;i<argc;++i){
+        std::string arg=argv[i];
+        if(arg=="-latex") LATEX_MODE=true;
+    }
     auto f=
     std::make_unique<Add>(
         std::make_unique<Add>(
